@@ -69,18 +69,19 @@ for frm_idx=1:10
     PreEst_re = zeros(sampleCnt,lineCnt);
     PreEst_im = zeros(sampleCnt,lineCnt);
     Modulus = zeros(sampleCnt,lineCnt);
+    for idx=ens_start:enssembleNum
+        Modulus = Modulus + (frmI_rmvDC(:,:,idx).^2+frmQ_rmvDC(:,:,idx).^2);
+    end
     for idx=ens_start:enssembleNum-1
-        Modulus = Modulus + sqrt(frmI_rmvDC(:,:,idx).^2+frmQ_rmvDC(:,:,idx).^2);
         PreEst_re =  PreEst_re + frmI_rmvDC(:,:,idx) .* frmI_rmvDC(:,:,idx+1) + frmQ_rmvDC(:,:,idx) .* frmQ_rmvDC(:,:,idx+1);
         PreEst_im =  PreEst_im + frmI_rmvDC(:,:,idx) .* frmQ_rmvDC(:,:,idx+1) - frmQ_rmvDC(:,:,idx) .* frmI_rmvDC(:,:,idx+1);
     end
-    Modulus = Modulus.^2./(enssembleNum-ens_start+1);
     v_PreEst = abs(atan2(PreEst_im,PreEst_re)).*127/pi;
     %Wall Filter order chosen
     WF_Order = zeros(sampleCnt,lineCnt); 
-    POWHigh = Modulus_thre_high^2/(enssembleNum-ens_start+1);
-    POWMid = Modulus_thre_mid^2/(enssembleNum-ens_start+1);
-    POWLow = Modulus_thre_low^2/(enssembleNum-ens_start+1);
+    POWHigh = Modulus_thre_high^2*(enssembleNum-ens_start+1);
+    POWMid = Modulus_thre_mid^2*(enssembleNum-ens_start+1);
+    POWLow = Modulus_thre_low^2*(enssembleNum-ens_start+1);
     for j=1:line_density:lineCnt
         for i=1:sampleCnt
             if (v_PreEst(i,j)<Velocity_thre_low)
@@ -153,14 +154,13 @@ for frm_idx=1:10
     
 %     load ([pathname 'tempdata',num2str(frm_idx),'.mat'])
 
-%% Calculate R0,R1 and Normalized to 8bit(-128 ~ +127)
+%% Calculate R0,R1, with average frame
     R0 = zeros(sampleCnt,lineCnt);
     for j=1:line_density:lineCnt
         for idx=ens_start:enssembleNum
             R0(:,j)= R0(:,j) + frmI_filtered(:,j,idx) .^2 + frmQ_filtered(:,j,idx) .^2;
         end
     end
-    R0 = sqrt(R0(:,1:line_density:end));
     re_R1 = zeros(sampleCnt,lineCnt);
     im_R1 = zeros(sampleCnt,lineCnt);
     for j=1:line_density:lineCnt
@@ -169,11 +169,13 @@ for frm_idx=1:10
              im_R1(:,j) = im_R1(:,j) + frmI_filtered(:,j,idx) .* frmQ_filtered(:,j,idx+1) - frmQ_filtered(:,j,idx) .* frmI_filtered(:,j,idx+1);
          end
     end
-    velocity = atan2(im_R1(:,1:line_density:end),re_R1(:,1:line_density:end)).*127/pi;
-    velocity(R0<=R0_thre) = 0;
+%% Normalized to 8bit(-128 ~ +127)
+    velocity = zeros(sampleCnt,lineCnt);
+    t = R0>R0_thre;
+    velocity(t) = atan2(im_R1(t),re_R1(t)).*127/pi;
     velocity(velocity>127) = 127;
     velocity(velocity<-128) = -128;
-    velocity_frms(:,:,frm_idx) = int8(round(velocity));
+    velocity_frms(:,:,frm_idx) = int8(round(velocity(:,1:line_density:lineCnt)));
 %% FlashReject
     velocity_8bit = FlashReject_UIS( velocity_frms, frm_idx, FR_thre);
 %% smooth
